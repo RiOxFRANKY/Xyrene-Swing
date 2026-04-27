@@ -1,0 +1,43 @@
+# IoT Network Intrusion Detection Model: Training Process
+# Architecture: Mamba SSM + DeepSeek MoE + XGBoost
+
+This document outlines the end-to-end training pipeline used for the CIC-BoT-IoT intrusion detection model.
+
+## 1. Data Loading & Memory Management
+The training dataset (CIC-BoT-IoT) is extremely large (~7.4 GB). To prevent Out-Of-Memory (OOM) crashes, the data is loaded using a chunk-based processing technique:
+- The dataset is read in chunks of 200,000 rows.
+- A hard RAM ceiling is enforced (e.g., 6 GB limit). If the dataset size exceeds the budget, reservoir sampling is dynamically applied to keep memory usage safe.
+- Corrupted rows (like embedded HTML strings) are coerced to `NaN` and safely dropped to ensure clean data ingestion.
+
+## 2. Preprocessing
+- **Zero-Variance Drop:** Columns where the standard deviation is 0 (all values are identical) are dropped because they offer no predictive value.
+- **Normalization:** A `MinMaxScaler` scales all features strictly between 0.0 and 1.0 to stabilize neural network gradients.
+- **Data Split:** The data is split into Training (70%), Validation (10%), and Test (20%) sets.
+
+## 3. The Hybrid Neural Architecture
+The core model is a hybrid Deep Learning network that creates powerful "embeddings" (mathematical representations) of the network packets.
+- **Mamba State Space Model (SSM):** Replaces traditional RNNs/LSTMs. It excels at finding sequential patterns in the data extremely fast.
+- **DeepSeek Mixture of Experts (MoE):** The network contains 4 "Expert" layers (using SwiGLU activations). For every forward pass, a routing algorithm looks at the data and activates only the "Top-2" experts best suited for that specific type of traffic. This increases capacity without slowing down training.
+
+## 4. Episodic Few-Shot Training (Prototypical Learning)
+Instead of standard batch training, the network is trained using "Episodes" (Prototypical Networks):
+- **Support & Query Sets:** In each episode, the model samples a small "Support" set and a "Query" set of packets.
+- **Prototypes:** It calculates a mean vector ("Prototype") for Benign traffic and Attack traffic based on the Support set.
+- **Distance & Loss:** It measures the Euclidean distance between the Query set and the Prototypes. The model weights are updated using AdamW to push Benign traffic closer to the Benign prototype and Attack traffic away from it.
+
+## 5. Embedding Extraction
+Once the hybrid Neural Network is fully trained, its weights are frozen. 
+- The entire dataset is passed through the network one last time. 
+- Instead of outputting a final prediction, the network outputs the raw internal embeddings (the 64-dimensional feature representations from the final layer).
+
+## 6. XGBoost Classification
+The extracted embeddings are fed into an XGBoost classifier.
+- XGBoost (Extreme Gradient Boosting) is highly resilient to overfitting and exceptional at tabular classification.
+- It learns the complex boundaries between the Mamba-MoE embeddings.
+- Once trained, the XGBoost model outputs the final Binary classification: 0 (Benign) or 1 (Attack).
+
+## 7. Artifact Generation
+- The final XGBoost model is saved as `xgboost_classifier.json`.
+- The Mamba-MoE embedding network is saved as `best_embedding_model.pt`.
+- The MinMaxScaler is saved as `scaler.pkl` to scale incoming live traffic.
+- A Confusion Matrix and Loss/Accuracy plots are saved to track performance.

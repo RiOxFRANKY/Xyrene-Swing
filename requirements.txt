@@ -1,0 +1,15 @@
+fastapi==0.136.1
+uvicorn==0.46.0
+keras==3.14.0
+tensorflow==2.21.0
+scikit-learn==1.8.0
+pandas==3.0.2
+numpy==2.4.4
+pydantic==2.13.3
+pyarrow==24.0.0
+requests==2.33.1
+joblib==1.5.3
+
+# (The above are the core dependencies for the API and Model Inference)
+# Note: Full frozen environment dependencies are available if needed,
+# but the above is sufficient to run the NIDS Python backend.
